@@ -47,10 +47,13 @@ public class DeleteLatencyTest {
 			e.printStackTrace();
 		}
 		
+		long timeOfDeletion = 0;
+		
 		// Now delete the document
 		System.out.println("Removing document...");
 		try {
 			bucket.remove("walter");
+			timeOfDeletion = System.currentTimeMillis();  // Because of multi-threading this could actually be after the first null is thrown
 		}
 		catch (Exception e) {
 			e.printStackTrace();
@@ -68,6 +71,10 @@ public class DeleteLatencyTest {
 
 		System.out.println("Finished the post-remove() sleep.");
 
+		if (timeOfDeletion != 0) {
+			System.out.println("Time for deletion to take effect was: " + (getOnly.getTimeOfFirstNull() - timeOfDeletion) + "ms. or less.");
+		}
+		
 		// Done with test, stop and clean up
 		
 		getOnly.stopGoing();
@@ -85,6 +92,7 @@ class GetOnly extends Thread {
 	Bucket _bucket = null;
 
 	long timeOfLastSuccess   = 0;
+	long timeOfFirstNull     = 0;
 	long timeOfLastNull      = 0;
 	long timeOfLastException = 0;
 
@@ -93,6 +101,7 @@ class GetOnly extends Thread {
 	int numberOfExceptions = 0;
 	
 	public long getTimeOfLastSuccess()   { return timeOfLastSuccess;   }
+	public long getTimeOfFirstNull()     { return timeOfFirstNull;     }
 	public long getTimeOfLastNull()      { return timeOfLastNull;      }
 	public long getTimeOfLastException() { return timeOfLastException; }
 	
@@ -108,27 +117,38 @@ class GetOnly extends Thread {
 		
 		int iteration = 0;
 		
+		long timeNow = 0;
+		
+		boolean printStatusEachTime = false;
+		boolean sleepBetweenTries = true;
+		
 		while (_keepGoing) {
-			System.out.println("In GetOnly.  Last Success Time: " + timeOfLastSuccess 
+			
+			if (printStatusEachTime) {
+				System.out.println("In GetOnly.  Last Success Time: " + timeOfLastSuccess 
 					+ " Last Exception Time: " + timeOfLastException 
 					+ " nulls : "     + numberOfNulls 
 					+ " iteration: "  + iteration 
 					+ " exceptions: " + numberOfExceptions);
+			}
+			
+			timeNow = System.currentTimeMillis();
 			
 			if (_bucket != null ) {
 				try {
 					JsonDocument walter = _bucket.get("walter");
 					if (walter != null) {
-						timeOfLastSuccess = System.currentTimeMillis();
+						timeOfLastSuccess = timeNow;
 						numberOfSuccess++;
 					}
 					else {
 						// System.out.println("No exception, but got null");
-						timeOfLastNull = System.currentTimeMillis();
+						if (timeOfFirstNull == 0) { timeOfFirstNull = timeNow; }
+						timeOfLastNull = timeNow;
 						numberOfNulls++;
 					}
 				} catch(Exception e) {
-					timeOfLastException = System.currentTimeMillis();
+					timeOfLastException = timeNow;
 					numberOfExceptions++;
 				}
 			}
@@ -136,11 +156,13 @@ class GetOnly extends Thread {
 				System.out.println("bucket is null.  Cannot do a get()");
 			}
 			
+			if (sleepBetweenTries) {
 			// Sleep between tries, you may experiment with different values here
-			try {
-				Thread.sleep(100);
-			} catch (InterruptedException e) {
-				e.printStackTrace();
+				try {
+					Thread.sleep(10);
+				} catch (InterruptedException e) {
+					e.printStackTrace();
+				}
 			}
 			
 			iteration++;
